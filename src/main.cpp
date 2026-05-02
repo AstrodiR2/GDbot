@@ -14,15 +14,12 @@ static float g_lastJumpTime = 0.0f;
 static bool isDangerous(GameObject* obj) {
     if (!obj) return false;
     int id = obj->m_objectID;
-    // Шипы (ID объектов шипов в GD)
     return (id == 8 || id == 39 || id == 103 || id == 291);
 }
 
 static bool isOrb(GameObject* obj) {
     if (!obj) return false;
     int id = obj->m_objectID;
-    // Жёлтый орб=36, розовый=84, красный=1594,
-    // синий=1595, зелёный=1022, чёрный=1099
     return (id == 36 || id == 84 || id == 1594 ||
             id == 1595 || id == 1022 || id == 1099);
 }
@@ -30,7 +27,6 @@ static bool isOrb(GameObject* obj) {
 static bool isPad(GameObject* obj) {
     if (!obj) return false;
     int id = obj->m_objectID;
-    // Жёлтый пад=35, розовый=67, красный=1333, синий=1332
     return (id == 35 || id == 67 || id == 1333 || id == 1332);
 }
 
@@ -44,7 +40,6 @@ static void botThink(PlayLayer* pl) {
 
     float px = player->getPositionX();
     float py = player->getPositionY();
-
     bool shouldJump = false;
 
     auto& objects = pl->m_objects;
@@ -58,15 +53,11 @@ static void botThink(PlayLayer* pl) {
         if (ox < px + 5.0f || ox > px + LOOK_AHEAD) continue;
         if (std::abs(oy - py) > DANGER_HEIGHT) continue;
 
-        if (isDangerous(obj)) {
+        if (isDangerous(obj) || isPad(obj)) {
             shouldJump = true;
             break;
         }
-        if (isPad(obj)) {
-            shouldJump = true;
-            break;
-        }
-        if (isOrb(obj) && ox - px < 50.0f) {
+        if (isOrb(obj) && (ox - px) < 50.0f) {
             shouldJump = true;
             break;
         }
@@ -114,26 +105,28 @@ struct MyPlayLayer : Modify<MyPlayLayer, PlayLayer> {
     }
 };
 
+// ── Кнопка в паузе ──────────────────────────────
 struct MyPauseLayer : Modify<MyPauseLayer, PauseLayer> {
     void customSetup() {
         PauseLayer::customSetup();
 
-        auto* label = CCLabelBMFont::create(
+        // Создаём через CCLabelBMFont + CCMenuItemSpriteExtra
+        // чтобы избежать проблем с памятью CCMenuItemLabel
+        auto* spr = ButtonSprite::create(
             g_botEnabled ? "Bot: ON" : "Bot: OFF",
-            "bigFont.fnt"
+            "bigFont.fnt",
+            "GJ_button_02.png",
+            0.8f
         );
-        label->setScale(0.5f);
-        label->setColor(g_botEnabled
-            ? ccColor3B{0, 255, 100}
-            : ccColor3B{255, 80, 80});
 
-        auto* btn = CCMenuItemLabel::create(
-            label, this,
+        auto* btn = CCMenuItemSpriteExtra::create(
+            spr,
+            this,
             menu_selector(MyPauseLayer::onToggleBot)
         );
+        btn->setID("bot-toggle-btn");
 
         if (auto* menu = this->getChildByID("right-button-menu")) {
-            btn->setID("bot-toggle-btn");
             menu->addChild(btn);
             menu->updateLayout();
         }
@@ -142,23 +135,25 @@ struct MyPauseLayer : Modify<MyPauseLayer, PauseLayer> {
     void onToggleBot(CCObject*) {
         g_botEnabled = !g_botEnabled;
 
+        // Пересоздаём спрайт кнопки
         if (auto* menu = this->getChildByID("right-button-menu")) {
-            if (auto* btn = static_cast<CCMenuItemLabel*>(
+            if (auto* btn = static_cast<CCMenuItemSpriteExtra*>(
                     menu->getChildByID("bot-toggle-btn"))) {
-                if (auto* lbl = dynamic_cast<CCLabelBMFont*>(btn->getLabel())) {
-                    lbl->setString(g_botEnabled ? "Bot: ON" : "Bot: OFF");
-                    lbl->setColor(g_botEnabled
-                        ? ccColor3B{0, 255, 100}
-                        : ccColor3B{255, 80, 80});
-                }
+
+                auto* newSpr = ButtonSprite::create(
+                    g_botEnabled ? "Bot: ON" : "Bot: OFF",
+                    "bigFont.fnt",
+                    "GJ_button_02.png",
+                    0.8f
+                );
+                btn->setNormalImage(newSpr);
+                btn->setContentSize(newSpr->getContentSize());
             }
         }
 
         Notification::create(
             g_botEnabled ? "Бот включён" : "Бот выключен",
-            g_botEnabled
-                ? NotificationIcon::Success
-                : NotificationIcon::Info
+            g_botEnabled ? NotificationIcon::Success : NotificationIcon::Info
         )->show();
     }
 };
