@@ -43,33 +43,28 @@ static void botThink(PlayLayer* pl) {
     float py = player->getPositionY();
     bool shouldJump = false;
 
-    // Используем m_processedGroups для получения объектов
-    auto* section = pl->sectionForPos(px);
-    if (!section) {
-        // Fallback: просто прыгаем периодически если секция не найдена
-        player->pushButton(PlayerButton::Jump);
-        player->releaseButton(PlayerButton::Jump);
-        g_lastJumpTime = now;
-        return;
-    }
+    // Перебираем секции уровня напрямую
+    for (auto* section : pl->m_sectionObjects) {
+        if (!section) continue;
+        for (auto* obj : *section) {
+            if (!obj || !obj->isVisible()) continue;
 
-    for (auto* obj : *section) {
-        if (!obj || !obj->isVisible()) continue;
+            float ox = obj->getPositionX();
+            float oy = obj->getPositionY();
 
-        float ox = obj->getPositionX();
-        float oy = obj->getPositionY();
+            if (ox < px + 5.0f || ox > px + LOOK_AHEAD) continue;
+            if (std::abs(oy - py) > DANGER_HEIGHT) continue;
 
-        if (ox < px + 5.0f || ox > px + LOOK_AHEAD) continue;
-        if (std::abs(oy - py) > DANGER_HEIGHT) continue;
-
-        if (isDangerous(obj) || isPad(obj)) {
-            shouldJump = true;
-            break;
+            if (isDangerous(obj) || isPad(obj)) {
+                shouldJump = true;
+                break;
+            }
+            if (isOrb(obj) && (ox - px) < 60.0f) {
+                shouldJump = true;
+                break;
+            }
         }
-        if (isOrb(obj) && (ox - px) < 60.0f) {
-            shouldJump = true;
-            break;
-        }
+        if (shouldJump) break;
     }
 
     if (shouldJump) {
@@ -132,7 +127,6 @@ struct MyPauseLayer : Modify<MyPauseLayer, PauseLayer> {
         );
         btn->setID("bot-toggle-btn");
 
-        // Используем left-button-menu — там кнопки Resume/Practice
         if (auto* menu = this->getChildByID("left-button-menu")) {
             menu->addChild(btn);
             menu->updateLayout();
@@ -145,21 +139,26 @@ struct MyPauseLayer : Modify<MyPauseLayer, PauseLayer> {
     void onToggleBot(CCObject*) {
         g_botEnabled = !g_botEnabled;
 
-        if (auto* menu = this->getChildByID("left-button-menu")) {
-            if (auto* btn = static_cast<CCMenuItemSpriteExtra*>(
-                    menu->getChildByID("bot-toggle-btn"))) {
-                auto* newSpr = ButtonSprite::create(
-                    g_botEnabled ? "Bot: ON" : "Bot: OFF",
-                    "bigFont.fnt",
-                    "GJ_button_02.png",
-                    0.7f
-                );
-                newSpr->setScale(0.8f);
-                btn->setNormalImage(newSpr);
-                btn->setContentSize(newSpr->getContentSize());
-                menu->updateLayout();
+        auto updateMenu = [&](const char* menuId) {
+            if (auto* menu = this->getChildByID(menuId)) {
+                if (auto* btn = static_cast<CCMenuItemSpriteExtra*>(
+                        menu->getChildByID("bot-toggle-btn"))) {
+                    auto* newSpr = ButtonSprite::create(
+                        g_botEnabled ? "Bot: ON" : "Bot: OFF",
+                        "bigFont.fnt",
+                        "GJ_button_02.png",
+                        0.7f
+                    );
+                    newSpr->setScale(0.8f);
+                    btn->setNormalImage(newSpr);
+                    btn->setContentSize(newSpr->getContentSize());
+                    menu->updateLayout();
+                }
             }
-        }
+        };
+
+        updateMenu("left-button-menu");
+        updateMenu("center-button-menu");
 
         Notification::create(
             g_botEnabled ? "Бот включён" : "Бот выключен",
