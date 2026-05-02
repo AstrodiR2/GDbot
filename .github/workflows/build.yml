@@ -1,0 +1,38 @@
+name: Build GD Bot Mod
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    name: Build for Android (ARM64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Geode SDK
+        uses: geode-sdk/build-geode-mod/setup@main
+        with:
+          sdk: v5.6.1
+
+      - name: Configure CMake (Android ARM64)
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-23 \
+            -DGEODE_TARGET_PLATFORM=Android
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Upload .geode file
+        uses: actions/upload-artifact@v4
+        with:
+          name: GDBot-android
+          path: build/*.geode
