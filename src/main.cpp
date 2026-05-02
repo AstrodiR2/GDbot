@@ -6,15 +6,16 @@ using namespace geode::prelude;
 
 static bool g_botEnabled = false;
 static bool g_botActive  = false;
-static constexpr float LOOK_AHEAD    = 100.0f;
-static constexpr float DANGER_HEIGHT = 40.0f;
-static constexpr float JUMP_COOLDOWN = 0.15f;
+static constexpr float LOOK_AHEAD    = 150.0f;
+static constexpr float DANGER_HEIGHT = 50.0f;
+static constexpr float JUMP_COOLDOWN = 0.1f;
 static float g_lastJumpTime = 0.0f;
 
 static bool isDangerous(GameObject* obj) {
     if (!obj) return false;
     int id = obj->m_objectID;
-    return (id == 8 || id == 39 || id == 103 || id == 291);
+    return (id == 8 || id == 39 || id == 103 || id == 291 ||
+            id == 1616 || id == 1715 || id == 1614);
 }
 
 static bool isOrb(GameObject* obj) {
@@ -42,9 +43,17 @@ static void botThink(PlayLayer* pl) {
     float py = player->getPositionY();
     bool shouldJump = false;
 
-    auto& objects = pl->m_objects;
-    for (int i = 0; i < (int)objects->count(); i++) {
-        auto* obj = static_cast<GameObject*>(objects->objectAtIndex(i));
+    // Используем m_processedGroups для получения объектов
+    auto* section = pl->sectionForPos(px);
+    if (!section) {
+        // Fallback: просто прыгаем периодически если секция не найдена
+        player->pushButton(PlayerButton::Jump);
+        player->releaseButton(PlayerButton::Jump);
+        g_lastJumpTime = now;
+        return;
+    }
+
+    for (auto* obj : *section) {
         if (!obj || !obj->isVisible()) continue;
 
         float ox = obj->getPositionX();
@@ -57,7 +66,7 @@ static void botThink(PlayLayer* pl) {
             shouldJump = true;
             break;
         }
-        if (isOrb(obj) && (ox - px) < 50.0f) {
+        if (isOrb(obj) && (ox - px) < 60.0f) {
             shouldJump = true;
             break;
         }
@@ -105,28 +114,29 @@ struct MyPlayLayer : Modify<MyPlayLayer, PlayLayer> {
     }
 };
 
-// ── Кнопка в паузе ──────────────────────────────
 struct MyPauseLayer : Modify<MyPauseLayer, PauseLayer> {
     void customSetup() {
         PauseLayer::customSetup();
 
-        // Создаём через CCLabelBMFont + CCMenuItemSpriteExtra
-        // чтобы избежать проблем с памятью CCMenuItemLabel
         auto* spr = ButtonSprite::create(
             g_botEnabled ? "Bot: ON" : "Bot: OFF",
             "bigFont.fnt",
             "GJ_button_02.png",
-            0.8f
+            0.7f
         );
+        spr->setScale(0.8f);
 
         auto* btn = CCMenuItemSpriteExtra::create(
-            spr,
-            this,
+            spr, this,
             menu_selector(MyPauseLayer::onToggleBot)
         );
         btn->setID("bot-toggle-btn");
 
-        if (auto* menu = this->getChildByID("right-button-menu")) {
+        // Используем left-button-menu — там кнопки Resume/Practice
+        if (auto* menu = this->getChildByID("left-button-menu")) {
+            menu->addChild(btn);
+            menu->updateLayout();
+        } else if (auto* menu = this->getChildByID("center-button-menu")) {
             menu->addChild(btn);
             menu->updateLayout();
         }
@@ -135,19 +145,19 @@ struct MyPauseLayer : Modify<MyPauseLayer, PauseLayer> {
     void onToggleBot(CCObject*) {
         g_botEnabled = !g_botEnabled;
 
-        // Пересоздаём спрайт кнопки
-        if (auto* menu = this->getChildByID("right-button-menu")) {
+        if (auto* menu = this->getChildByID("left-button-menu")) {
             if (auto* btn = static_cast<CCMenuItemSpriteExtra*>(
                     menu->getChildByID("bot-toggle-btn"))) {
-
                 auto* newSpr = ButtonSprite::create(
                     g_botEnabled ? "Bot: ON" : "Bot: OFF",
                     "bigFont.fnt",
                     "GJ_button_02.png",
-                    0.8f
+                    0.7f
                 );
+                newSpr->setScale(0.8f);
                 btn->setNormalImage(newSpr);
                 btn->setContentSize(newSpr->getContentSize());
+                menu->updateLayout();
             }
         }
 
