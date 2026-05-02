@@ -1,0 +1,12 @@
+{
+  "geode": "5.6.1",
+  "gd": {
+    "android": "2.2081"
+  },
+  "id": "AstrodiR.gdbot",
+  "name": "GD Bot",
+  "version": "1.0.0",
+  "developer": "AstrodiR",
+  "description": "Автобот для прохождения уровней. При включённом боте прогресс не засчитывается.",
+  "links": {}
+}
