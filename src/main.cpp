@@ -4,12 +4,16 @@
 
 using namespace geode::prelude;
 
-static bool g_botEnabled = false;
-static bool g_botActive  = false;
-static constexpr float LOOK_AHEAD    = 150.0f;
-static constexpr float DANGER_HEIGHT = 50.0f;
-static constexpr float JUMP_COOLDOWN = 0.1f;
-static float g_lastJumpTime = 0.0f;
+static bool  g_botEnabled     = false;
+static bool  g_botActive      = false;
+static bool  g_pendingRelease = false;
+static float g_releaseTimer   = 0.0f;
+static float g_lastJumpTime   = 0.0f;
+
+static constexpr float LOOK_AHEAD    = 250.0f;
+static constexpr float DANGER_HEIGHT = 80.0f;
+static constexpr float JUMP_COOLDOWN = 0.15f;
+static constexpr float RELEASE_DELAY = 0.05f;
 
 static bool isDangerous(GameObject* obj) {
     if (!obj) return false;
@@ -32,18 +36,22 @@ static bool isPad(GameObject* obj) {
 }
 
 static void botThink(PlayLayer* pl) {
-    if (!pl) return;
-    auto* player = pl->m_player1;
-    if (!player) return;
+    if (!pl || !pl->m_player1) return;
 
+    auto* player = pl->m_player1;
     float now = pl->m_gameState.m_levelTime;
     if (now - g_lastJumpTime < JUMP_COOLDOWN) return;
 
     float px = player->getPositionX();
     float py = player->getPositionY();
-    bool shouldJump = false;
 
-    for (auto* obj : CCArrayExt<GameObject*>(pl->m_objects)) {
+    auto* objLayer = pl->m_objectLayer;
+    if (!objLayer) return;
+    auto* children = objLayer->getChildren();
+    if (!children) return;
+
+    for (int i = 0; i < (int)children->count(); i++) {
+        auto* obj = typeinfo_cast<GameObject*>(children->objectAtIndex(i));
         if (!obj || !obj->isVisible()) continue;
 
         float ox = obj->getPositionX();
@@ -52,34 +60,41 @@ static void botThink(PlayLayer* pl) {
         if (ox < px + 5.0f || ox > px + LOOK_AHEAD) continue;
         if (std::abs(oy - py) > DANGER_HEIGHT) continue;
 
-        if (isDangerous(obj) || isPad(obj)) {
-            shouldJump = true;
-            break;
-        }
-        if (isOrb(obj) && (ox - px) < 60.0f) {
-            shouldJump = true;
-            break;
-        }
-    }
+        bool danger = isDangerous(obj) || isPad(obj);
+        bool orb    = isOrb(obj) && (ox - px) < 80.0f;
 
-    if (shouldJump) {
-        player->pushButton(PlayerButton::Jump);
-        player->releaseButton(PlayerButton::Jump);
-        g_lastJumpTime = now;
+        if (danger || orb) {
+            player->pushButton(PlayerButton::Jump);
+            g_lastJumpTime   = now;
+            g_pendingRelease = true;
+            g_releaseTimer   = 0.0f;
+            break;
+        }
     }
 }
 
 struct MyPlayLayer : Modify<MyPlayLayer, PlayLayer> {
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
-        g_botActive = true;
-        g_lastJumpTime = 0.0f;
+        g_botActive      = true;
+        g_lastJumpTime   = 0.0f;
+        g_pendingRelease = false;
+        g_releaseTimer   = 0.0f;
         return true;
     }
 
     void update(float dt) {
         PlayLayer::update(dt);
-        if (g_botEnabled && g_botActive) {
+        if (!g_botEnabled || !g_botActive) return;
+
+        if (g_pendingRelease) {
+            g_releaseTimer += dt;
+            if (g_releaseTimer >= RELEASE_DELAY) {
+                if (m_player1) m_player1->releaseButton(PlayerButton::Jump);
+                g_pendingRelease = false;
+                g_releaseTimer   = 0.0f;
+            }
+        } else {
             botThink(this);
         }
     }
@@ -99,62 +114,51 @@ struct MyPlayLayer : Modify<MyPlayLayer, PlayLayer> {
     }
 
     void onQuit() {
-        g_botActive = false;
+        g_botActive      = false;
+        g_pendingRelease = false;
         PlayLayer::onQuit();
     }
 };
 
+// PauseLayer — без змін
 struct MyPauseLayer : Modify<MyPauseLayer, PauseLayer> {
     void customSetup() {
         PauseLayer::customSetup();
-
         auto* spr = ButtonSprite::create(
             g_botEnabled ? "Bot: ON" : "Bot: OFF",
-            "bigFont.fnt",
-            "GJ_button_02.png",
-            0.7f
+            "bigFont.fnt", "GJ_button_02.png", 0.7f
         );
         spr->setScale(0.8f);
-
         auto* btn = CCMenuItemSpriteExtra::create(
-            spr, this,
-            menu_selector(MyPauseLayer::onToggleBot)
+            spr, this, menu_selector(MyPauseLayer::onToggleBot)
         );
         btn->setID("bot-toggle-btn");
-
         if (auto* menu = this->getChildByID("left-button-menu")) {
-            menu->addChild(btn);
-            menu->updateLayout();
+            menu->addChild(btn); menu->updateLayout();
         } else if (auto* menu = this->getChildByID("center-button-menu")) {
-            menu->addChild(btn);
-            menu->updateLayout();
+            menu->addChild(btn); menu->updateLayout();
         }
     }
 
     void onToggleBot(CCObject*) {
         g_botEnabled = !g_botEnabled;
-
-        auto updateMenu = [&](const char* menuId) {
-            if (auto* menu = this->getChildByID(menuId)) {
+        auto update = [&](const char* id) {
+            if (auto* menu = this->getChildByID(id)) {
                 if (auto* btn = static_cast<CCMenuItemSpriteExtra*>(
                         menu->getChildByID("bot-toggle-btn"))) {
-                    auto* newSpr = ButtonSprite::create(
+                    auto* spr = ButtonSprite::create(
                         g_botEnabled ? "Bot: ON" : "Bot: OFF",
-                        "bigFont.fnt",
-                        "GJ_button_02.png",
-                        0.7f
+                        "bigFont.fnt", "GJ_button_02.png", 0.7f
                     );
-                    newSpr->setScale(0.8f);
-                    btn->setNormalImage(newSpr);
-                    btn->setContentSize(newSpr->getContentSize());
+                    spr->setScale(0.8f);
+                    btn->setNormalImage(spr);
+                    btn->setContentSize(spr->getContentSize());
                     menu->updateLayout();
                 }
             }
         };
-
-        updateMenu("left-button-menu");
-        updateMenu("center-button-menu");
-
+        update("left-button-menu");
+        update("center-button-menu");
         Notification::create(
             g_botEnabled ? "Бот включён" : "Бот выключен",
             g_botEnabled ? NotificationIcon::Success : NotificationIcon::Info
