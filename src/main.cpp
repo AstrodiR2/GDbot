@@ -43,28 +43,23 @@ static void botThink(PlayLayer* pl) {
     float py = player->getPositionY();
     bool shouldJump = false;
 
-    // Перебираем секции уровня напрямую
-    for (auto* section : pl->m_sectionObjects) {
-        if (!section) continue;
-        for (auto* obj : *section) {
-            if (!obj || !obj->isVisible()) continue;
+    for (auto* obj : CCArrayExt<GameObject*>(pl->m_objects)) {
+        if (!obj || !obj->isVisible()) continue;
 
-            float ox = obj->getPositionX();
-            float oy = obj->getPositionY();
+        float ox = obj->getPositionX();
+        float oy = obj->getPositionY();
 
-            if (ox < px + 5.0f || ox > px + LOOK_AHEAD) continue;
-            if (std::abs(oy - py) > DANGER_HEIGHT) continue;
+        if (ox < px + 5.0f || ox > px + LOOK_AHEAD) continue;
+        if (std::abs(oy - py) > DANGER_HEIGHT) continue;
 
-            if (isDangerous(obj) || isPad(obj)) {
-                shouldJump = true;
-                break;
-            }
-            if (isOrb(obj) && (ox - px) < 60.0f) {
-                shouldJump = true;
-                break;
-            }
+        if (isDangerous(obj) || isPad(obj)) {
+            shouldJump = true;
+            break;
         }
-        if (shouldJump) break;
+        if (isOrb(obj) && (ox - px) < 60.0f) {
+            shouldJump = true;
+            break;
+        }
     }
 
     if (shouldJump) {
